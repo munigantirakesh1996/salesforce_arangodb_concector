@@ -23,6 +23,14 @@ st.markdown("""
         text-align: center;
         color: white;
     }
+    .object-selector {
+        max-height: 300px;
+        overflow-y: scroll;
+        border: 1px solid #ddd;
+        padding: 0.5rem;
+        border-radius: 5px;
+        background: #fff;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,17 +91,51 @@ if st.session_state.connected:
     st.subheader("📦 Configure Migration Settings")
 
     items = get_items(sf)
-    selected_items = st.multiselect("Select Salesforce Objects to Migrate", items)
+
+    # Object multiselect
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        select_all = st.checkbox("Select All", key="select_all_objs")
+    with col2:
+        selected_items = st.multiselect(
+            "Select Salesforce Objects to Migrate",
+            items,
+            default=items if st.session_state.get("select_all_objs") else [],
+            key="selected_objects"
+        )
 
     if selected_items:
-        tabs = st.tabs([f"📋 {item}" for item in selected_items])
+        MAX_TABS = 10
+        if len(selected_items) > MAX_TABS:
+            st.warning(f"Showing first {MAX_TABS} of {len(selected_items)} selected objects for configuration.")
+            display_items = selected_items[:MAX_TABS]
+        else:
+            display_items = selected_items
+
+        tabs = st.tabs([f"📋 {item}" for item in display_items])
         item_inputs = []
 
-        for tab, item in zip(tabs, selected_items):
+        for tab, item in zip(tabs, display_items):
             with tab:
                 st.markdown(f"### Configuration for {item}")
                 fields = get_sf_fields(sf, item)
-                selected_fields = st.multiselect(f"Select fields from {item}", fields, key=f"fields_{item}")
+
+                # Select All Fields option
+                select_all_fields = st.checkbox(f"Select All Fields in {item}", key=f"select_all_fields_{item}")
+                
+                # Determine default fields based on checkbox state
+                if select_all_fields:
+                    default_fields = fields
+                else:
+                    default_fields = st.session_state.get(f"fields_{item}", [])
+
+                selected_fields = st.multiselect(
+                    f"Select fields from {item}",
+                    fields,
+                    default=default_fields,
+                    key=f"fields_{item}"
+                )
+
                 col_name = st.text_input(f"ArangoDB Collection Name", value=item.lower(), key=f"col_{item}")
                 col_type = st.radio("Collection Type", ["Document", "Edge"], key=f"type_{item}", horizontal=True)
                 item_inputs.append((item, selected_fields, col_name, col_type == "Edge"))
@@ -108,10 +150,10 @@ if st.session_state.connected:
                                     raw_records, arango_docs = preview_salesforce_data(sf, item, field_map, limit=preview_limit)
                                     sf_df = pd.DataFrame(raw_records).drop(columns='attributes', errors='ignore')
                                     arango_df = pd.DataFrame(arango_docs)
-                                    st.markdown("#### 🗂 Salesforce Records")
+                                    st.markdown("#### 📂 Salesforce Records")
                                     st.dataframe(sf_df, use_container_width=True)
                                     st.download_button("Download Salesforce CSV", sf_df.to_csv(index=False).encode("utf-8"), f"{item}_sf.csv", "text/csv")
-                                    st.markdown("#### 🧾 Transformed ArangoDB Docs")
+                                    st.markdown("#### 📟 Transformed ArangoDB Docs")
                                     st.dataframe(arango_df, use_container_width=True)
                                     st.download_button("Download ArangoDB JSON", arango_df.to_json(orient="records", indent=2), f"{item}_arango.json", "application/json")
                                 except Exception as e:
@@ -160,14 +202,14 @@ if st.session_state.connected:
                             item_status.text(f"Migrated {current:,} of {total:,} records")
 
                         count = transfer_data_with_progress(
-    sf=sf,
-    adb=adb,
-    object_name=item_name,
-    collection_name=col_name,
-    field_mappings=field_map,
-    is_edge=is_edge,
-    progress_callback=progress_callback
-)
+                            sf=sf,
+                            adb=adb,
+                            object_name=item_name,
+                            collection_name=col_name,
+                            field_mappings=field_map,
+                            is_edge=is_edge,
+                            progress_callback=progress_callback
+                        )
                         actual = collection.count()
 
                         st.session_state.migration_status[item_name] = "success"
@@ -189,5 +231,3 @@ if st.session_state.connected:
                 st.error(f"Migration setup failed: {e}")
 else:
     st.info("🔌 Please connect to services using the sidebar.")
-
-

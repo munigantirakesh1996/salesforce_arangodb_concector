@@ -1,3 +1,6 @@
+
+
+
 # === FILE: utils/preview.py ===
 def preview_salesforce_data(sf, object_name, field_mappings, limit=20):
     try:
@@ -16,3 +19,4 @@ def preview_salesforce_data(sf, object_name, field_mappings, limit=20):
         return records, transformed_docs
     except Exception as e:
         raise Exception(f"Preview failed for {object_name}: {e}")
+
